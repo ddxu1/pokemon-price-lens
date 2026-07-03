@@ -32,6 +32,34 @@ test("parses a TCGplayer-style product title", () => {
   );
 });
 
+test("parses a TCGplayer title without a card number", () => {
+  assert.deepEqual(
+    detector.parseTcgplayerTitle(
+      "Blastoise - Base Set - Pokemon | TCGplayer"
+    ),
+    {
+      source: "tcgplayer",
+      name: "Blastoise",
+      number: "",
+      fullNumber: "",
+      set: "Base Set"
+    }
+  );
+});
+
+test("parses a TCGplayer product slug before the page hydrates", () => {
+  assert.deepEqual(
+    detector.parseTcgplayerSlug("/product/42360/pokemon-base-set-blastoise?Language=English&page=1"),
+    {
+      source: "tcgplayer",
+      name: "Blastoise",
+      number: "",
+      fullNumber: "",
+      set: "Base Set"
+    }
+  );
+});
+
 test("extracts card numbers without confusing the set total", () => {
   assert.equal(detector.cardNumber("Mega Charizard X ex 125/094"), "125");
   assert.equal(detector.cardNumber("Mega Charizard X ex #125"), "125");

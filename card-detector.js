@@ -44,15 +44,59 @@
   function parseTcgplayerTitle(title) {
     const value = clean(title).replace(/\s*\|\s*TCGplayer.*$/i, "");
     const number = cardNumber(value);
-    if (!number) return null;
-
     const pieces = value.split(/\s+-\s+/).map(clean).filter(Boolean);
     const numberIndex = pieces.findIndex((piece) => /\d{1,4}[a-z]?\s*\/\s*\d{1,4}[a-z]?/i.test(piece));
     const name = cleanCardName(numberIndex > 0 ? pieces.slice(0, numberIndex).join(" - ") : pieces[0]);
-    const set = pieces
-      .slice(numberIndex + 1)
+    const setCandidates = numberIndex >= 0 ? pieces.slice(numberIndex + 1) : pieces.slice(1);
+    const set = setCandidates
       .find((piece) => !/^(pok[eé]mon|tcgplayer|near mint|lightly played)$/i.test(piece)) || "";
     return name ? { source: "tcgplayer", name, number, fullNumber: fullCardNumber(value), set: clean(set) } : null;
+  }
+
+  function titleCaseWords(value) {
+    return clean(value)
+      .split(/\s+/)
+      .filter(Boolean)
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+  }
+
+  function parseTcgplayerSlug(pathname) {
+    const match = String(pathname || "").match(/\/product\/\d+\/([^/?#]+)/i);
+    if (!match) return null;
+    const tokens = match[1]
+      .split("-")
+      .map(clean)
+      .filter(Boolean);
+    if (!tokens.length) return null;
+
+    const gameIndex = tokens.findIndex((token) => /^pok[eé]mon$/i.test(token));
+    const parts = gameIndex >= 0 ? tokens.slice(gameIndex + 1) : tokens;
+    if (parts.length < 2) return null;
+
+    if (parts.length >= 3 && /^set$/i.test(parts[parts.length - 2])) {
+      return {
+        source: "tcgplayer",
+        name: titleCaseWords(parts.slice(-1).join(" ")),
+        number: "",
+        fullNumber: "",
+        set: titleCaseWords(parts.slice(0, -1).join(" "))
+      };
+    }
+
+    for (let size = Math.min(5, parts.length - 1); size >= 1; size -= 1) {
+      const nameTokens = parts.slice(-size);
+      const setTokens = parts.slice(0, -size);
+      if (!setTokens.length) continue;
+      return {
+        source: "tcgplayer",
+        name: titleCaseWords(nameTokens.join(" ")),
+        number: "",
+        fullNumber: "",
+        set: titleCaseWords(setTokens.join(" "))
+      };
+    }
+    return null;
   }
 
   function cleanEbayCardName(title, fullNumber) {
@@ -175,19 +219,20 @@
     if (/tcgplayer\.com$/.test(host) && /\/product\//i.test(pathname)) {
       const metaTitle = metaContent(document, "og:title");
       const titleCard = parseTcgplayerTitle(metaTitle) || parseTcgplayerTitle(title);
+      const slugCard = parseTcgplayerSlug(pathname);
       const heading = textOf(document, "h1") || textOf(document, '[data-testid*="product-title"]');
       const combined = `${heading} ${metaTitle} ${title}`;
       const name = heading && !/tcgplayer/i.test(heading)
         ? cleanCardName(heading)
-        : titleCard && titleCard.name;
-      const number = cardNumber(combined) || (titleCard && titleCard.number);
-      if (!name || !number) return null;
+        : (titleCard && titleCard.name) || (slugCard && slugCard.name);
+      const number = cardNumber(combined) || (titleCard && titleCard.number) || "";
+      if (!name) return null;
       return {
         source: "tcgplayer",
         name,
         number,
         fullNumber: fullCardNumber(combined),
-        set: detectTcgSet(document, titleCard)
+        set: detectTcgSet(document, titleCard) || (slugCard && slugCard.set) || ""
       };
     }
 
@@ -209,5 +254,5 @@
     return null;
   }
 
-  return { cardNumber, fullCardNumber, cleanCardName, parseCollectrTitle, parseTcgplayerTitle, parseEbayListingTitle, detectCard };
+  return { cardNumber, fullCardNumber, cleanCardName, parseCollectrTitle, parseTcgplayerTitle, parseEbayListingTitle, parseTcgplayerSlug, detectCard };
 });

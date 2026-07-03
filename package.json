@@ -5,7 +5,7 @@
   "description": "A dependency-free Chrome extension for comparing English and Japanese Pokémon card prices.",
   "repository": {
     "type": "git",
-    "url": "https://github.com/dannydxu1/pokemon-price-lens.git"
+    "url": "https://github.com/ddxu1/pokemon-price-lens.git"
   },
   "scripts": {
     "test": "node --test tests/*.test.js",

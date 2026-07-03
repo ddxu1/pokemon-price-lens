@@ -56,6 +56,10 @@
     return `https://www.pricecharting.com/search-products?type=prices&q=${encodeURIComponent(`${card && card.name || ""}${suffix}`.trim())}`;
   }
 
+  function ebaySearchUrl(card) {
+    return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery(card))}`;
+  }
+
   function hostname(url) {
     try {
       return new URL(url).hostname.toLowerCase();
@@ -85,6 +89,7 @@
     const japaneseProduct = lookup && lookup.japanese && lookup.japanese.selected;
     const currentIsCollectr = currentHost === "app.getcollectr.com";
     const currentIsTcgplayer = /tcgplayer\.com$/.test(currentHost);
+    const currentIsEbay = /ebay\.com$/.test(currentHost) && /\/itm\//i.test(String(currentUrl || ""));
 
     const collectrExact = currentIsCollectr ? currentUrl : known.collectr;
     const tcgplayerExact = currentIsTcgplayer ? currentUrl : known.tcgplayer;
@@ -117,6 +122,13 @@
         url: japaneseProduct && japaneseProduct.url || pricechartingSearchUrl(card, "japanese"),
         exact: Boolean(japaneseProduct),
         current: Boolean(japaneseProduct && samePage(currentUrl, japaneseProduct.url))
+      },
+      {
+        id: "ebay",
+        label: "eBay",
+        url: currentIsEbay ? currentUrl : ebaySearchUrl(card),
+        exact: currentIsEbay,
+        current: currentIsEbay
       }
     ];
   }
@@ -135,6 +147,7 @@
     collectrSearchUrl,
     tcgplayerSearchUrl,
     pricechartingSearchUrl,
+    ebaySearchUrl,
     resolveLinks,
     lookupForPriceChartingProduct,
     isJapaneseProduct

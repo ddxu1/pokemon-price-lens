@@ -37,3 +37,38 @@ test("extracts card numbers without confusing the set total", () => {
   assert.equal(detector.cardNumber("Mega Charizard X ex #125"), "125");
   assert.equal(detector.fullCardNumber("Mega Charizard X ex 125/094"), "125/094");
 });
+
+test("parses an ungraded eBay listing title", () => {
+  assert.deepEqual(
+    detector.parseEbayListingTitle(
+      "Pokemon 2025 Mega Charizard X EX SIR 125/094 (English) Phantasmal Flames Pokemon TCG"
+    ),
+    {
+      source: "ebay",
+      name: "Mega Charizard X EX",
+      number: "125",
+      fullNumber: "125/094",
+      set: "Phantasmal Flames",
+      listingLanguage: "english",
+      listingGrade: "ungraded"
+    }
+  );
+});
+
+test("uses eBay item specifics for a Japanese PSA 10 listing", () => {
+  assert.deepEqual(
+    detector.parseEbayListingTitle(
+      "2025 Pokemon Mega Charizard X ex 110/080 PSA10",
+      { cardName: "Mega Charizard X ex", cardNumber: "110/080", set: "Inferno X", language: "Japanese", grade: "PSA 10" }
+    ),
+    {
+      source: "ebay",
+      name: "Mega Charizard X ex",
+      number: "110",
+      fullNumber: "110/080",
+      set: "Pokemon Japanese Inferno X",
+      listingLanguage: "japanese",
+      listingGrade: "psa10"
+    }
+  );
+});

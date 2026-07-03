@@ -136,6 +136,16 @@
         .site-link.current .site-state { color: #93c5fd; }
         .open-all { width: 100%; height: 32px; margin-top: 7px; border: 1px solid rgba(96, 165, 250, .55); border-radius: 8px; background: rgba(29, 78, 216, .32); color: #dbeafe; cursor: pointer; font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .open-all:hover { background: rgba(29, 78, 216, .5); color: white; }
+        .listing-comparison { padding: 12px 14px 13px; border-bottom: 1px solid #1e293b; }
+        .comparison-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #7f8ea3; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
+        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+        .comparison-value { padding: 9px; border: 1px solid rgba(100, 116, 139, .38); border-radius: 9px; background: rgba(17, 27, 46, .62); }
+        .comparison-value span { display: block; color: #7f8ea3; font-size: 9px; text-transform: uppercase; }
+        .comparison-value strong { color: #f8fafc; font-size: 15px; font-variant-numeric: tabular-nums; }
+        .comparison-verdict { margin-top: 8px; color: #cbd5e1; font-size: 11px; }
+        .comparison-verdict.good { color: #86efac; }
+        .comparison-verdict.high { color: #fca5a5; }
+        .comparison-note { margin-top: 3px; color: #64748b; font-size: 9px; }
         .language { padding: 14px; border-bottom: 1px solid #1e293b; }
         .language-top { display: flex; align-items: center; gap: 11px; }
         .thumb { width: 52px; height: 72px; flex: none; border-radius: 5px; background: #172033; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,.28); }
@@ -223,6 +233,47 @@
     `;
   }
 
+  function numericPrice(value) {
+    const match = String(value || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/);
+    return match ? Number(match[0]) : null;
+  }
+
+  function listingComparisonBlock() {
+    if (!currentCard || currentCard.source !== "ebay") return "";
+    const ask = numericPrice(currentCard.listingPrice);
+    const language = currentCard.listingLanguage === "japanese" ? "japanese" : "english";
+    const product = currentResult && currentResult[language] && currentResult[language].selected;
+    const gradeKey = currentCard.listingGrade === "psa10"
+      ? "psa10"
+      : currentCard.listingGrade === "grade9" ? "grade9" : "ungraded";
+    const gradeLabel = gradeKey === "psa10" ? "PSA 10" : gradeKey === "grade9" ? "Grade 9" : "Ungraded";
+    const marketText = product && product.prices && product.prices[gradeKey];
+    const market = numericPrice(marketText);
+    let verdict = "Price comparison is unavailable for this listing.";
+    let verdictClass = "";
+
+    if (ask != null && market != null && market > 0) {
+      const difference = ask - market;
+      const percent = Math.abs(difference / market * 100);
+      verdict = difference === 0
+        ? "The asking price matches the PriceCharting value."
+        : `The asking price is ${percent.toFixed(1)}% ${difference < 0 ? "below" : "above"} the matched value.`;
+      verdictClass = difference < 0 ? "good" : "high";
+    }
+
+    return `
+      <section class="listing-comparison">
+        <div class="comparison-title"><span>eBay listing comparison</span><span>${escapeHtml(language === "japanese" ? "Japanese" : "English")}</span></div>
+        <div class="comparison-grid">
+          <div class="comparison-value"><span>eBay ask</span><strong>${escapeHtml(currentCard.listingPrice || "—")}</strong></div>
+          <div class="comparison-value"><span>PriceCharting ${escapeHtml(gradeLabel)}</span><strong>${escapeHtml(marketText || "—")}</strong></div>
+        </div>
+        <div class="comparison-verdict ${verdictClass}">${escapeHtml(verdict)}</div>
+        <div class="comparison-note">Asking price only; shipping, tax, bids, and offers are not included.</div>
+      </section>
+    `;
+  }
+
   function languageBlock(language, label, group) {
     const product = group && group.selected;
     if (!product) {
@@ -263,6 +314,7 @@
     const when = new Date(currentResult.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     shadow.querySelector(".content").innerHTML = `
       ${navigationBlock()}
+      ${listingComparisonBlock()}
       ${languageBlock("english", "English", currentResult.english)}
       ${languageBlock("japanese", "Japanese", currentResult.japanese)}
       <div class="footer">

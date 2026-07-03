@@ -1,6 +1,6 @@
 {
   "name": "pokemon-price-lens",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "A dependency-free Chrome extension for comparing English and Japanese Pokémon card prices.",
   "repository": {

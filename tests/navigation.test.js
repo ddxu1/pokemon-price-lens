@@ -30,6 +30,10 @@ test("builds precise marketplace search fallbacks", () => {
   const collectr = new URL(navigation.collectrSearchUrl(card));
   assert.equal(collectr.hostname, "www.google.com");
   assert.match(collectr.searchParams.get("q"), /site:app\.getcollectr\.com\/explore\/product/);
+
+  const ebay = new URL(navigation.ebaySearchUrl({ ...card, fullNumber: "125/094" }));
+  assert.equal(ebay.hostname, "www.ebay.com");
+  assert.match(ebay.searchParams.get("_nkw"), /125\/094/);
 });
 
 test("prefers remembered marketplace links and exact PriceCharting matches", () => {
@@ -55,7 +59,8 @@ test("prefers remembered marketplace links and exact PriceCharting matches", () 
     { id: "collectr", exact: true, current: false },
     { id: "tcgplayer", exact: true, current: false },
     { id: "pricecharting-english", exact: true, current: true },
-    { id: "pricecharting-japanese", exact: true, current: false }
+    { id: "pricecharting-japanese", exact: true, current: false },
+    { id: "ebay", exact: false, current: false }
   ]);
 });
 

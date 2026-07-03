@@ -2,9 +2,10 @@
 
 A dependency-free Chrome extension that adds two Pokémon card pricing shortcuts:
 
-- On Collectr and TCGplayer product pages, a floating panel finds the best English and Japanese PriceCharting matches and shows Ungraded, Grade 9, and PSA 10 values.
+- On Collectr, TCGplayer, and eBay product pages, a floating panel finds the best English and Japanese PriceCharting matches and shows Ungraded, Grade 9, and PSA 10 values.
 - On PriceCharting result lists, a `PSA 10` badge is added to each visible Pokémon card row.
-- A card navigator switches between Collectr, TCGplayer, English PriceCharting, and Japanese PriceCharting, with an **Open all** action.
+- A card navigator switches between Collectr, TCGplayer, eBay, English PriceCharting, and Japanese PriceCharting, with an **Open all** action.
+- On an eBay listing, the panel compares the asking price with the appropriate PriceCharting Ungraded, Grade 9, or PSA 10 value.
 
 The extension queries PriceCharting directly from the browser. It has no backend and does not require an API key.
 
@@ -14,7 +15,7 @@ The extension queries PriceCharting directly from the browser. It has no backend
 2. Turn on **Developer mode**.
 3. Click **Load unpacked**.
 4. Select this `pokemon-price-lens` folder.
-5. Open a Collectr or TCGplayer card product page. The comparison panel appears automatically.
+5. Open a Collectr, TCGplayer, or eBay card product page. The comparison panel appears automatically.
 
 After changing extension files, click the extension's reload button on `chrome://extensions`, then refresh the card page.
 
@@ -30,12 +31,17 @@ The initial known set mapping includes Phantasmal Flames ↔ Japanese Inferno X.
 
 ## Card navigator
 
-The navigator appears in the Collectr/TCGplayer comparison overlay and as a compact dock on PriceCharting product pages. Clicking a Price Lens PSA 10 badge on PriceCharting search results opens the same navigator in a popover.
+The navigator appears in the Collectr, TCGplayer, and eBay comparison overlay and as a compact dock on PriceCharting product pages. Clicking a Price Lens PSA 10 badge on PriceCharting search results opens the same navigator in a popover.
 
 - PriceCharting product URLs are resolved from the extension's card matching results.
 - Visiting a Collectr or TCGplayer product teaches the extension that exact URL for that card.
 - Until an exact marketplace URL has been learned, TCGplayer opens a pre-filled product search and Collectr opens a targeted site search. These buttons are labeled **Search**, while known product links are labeled **Exact**.
+- eBay always opens a current listing search because individual listings expire; an eBay listing itself is labeled **Here**.
 - **Open all** creates the other available pages as background tabs.
+
+## eBay listing comparison
+
+On `ebay.com/itm/*` pages, the extension reads the public listing title, item specifics, grade, language, and asking price. PSA 10 listings are compared with PriceCharting PSA 10, grade 9 listings with Grade 9, and other listings with Ungraded. The comparison excludes shipping, tax, live bid changes, and negotiated offers.
 
 ## PriceCharting PSA 10 badges
 

@@ -55,6 +55,51 @@
     return name ? { source: "tcgplayer", name, number, fullNumber: fullCardNumber(value), set: clean(set) } : null;
   }
 
+  function cleanEbayCardName(title, fullNumber) {
+    let value = clean(title).replace(/\s*\|\s*eBay.*$/i, "");
+    if (fullNumber) value = value.split(new RegExp(fullNumber.replace("/", "\\s*\\/\\s*"), "i"))[0];
+    else value = value.replace(/\s*#\s*\d+[a-z]?.*$/i, "");
+    return clean(value)
+      .replace(/\b(?:19|20)\d{2}\b/g, " ")
+      .replace(/\b(?:pok[eé]mon|tcg|card|cards|english|japanese|jpn)\b/gi, " ")
+      .replace(/\b(?:sir|sar|holo|foil|rare|mint|nm|graded|ungraded|psa|bgs|cgc)\b(?:\s*\d+(?:\.\d+)?)?/gi, " ")
+      .replace(/^[\s\-|–—:]+|[\s\-|–—:]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function inferEbaySet(title, fullNumber) {
+    if (!fullNumber) return "";
+    const pattern = new RegExp(fullNumber.replace("/", "\\s*\\/\\s*"), "i");
+    const tail = clean(title).split(pattern)[1] || "";
+    return clean(tail)
+      .replace(/\s*\|\s*eBay.*$/i, "")
+      .replace(/^\s*[\-|–—:]\s*/, "")
+      .replace(/\b(?:pok[eé]mon|tcg|card|cards|english|japanese|jpn|psa\s*\d+|bgs\s*\d+(?:\.\d+)?|cgc\s*\d+(?:\.\d+)?|sir|sar|holo|foil|rare|mint|nm|condition|pack fresh)\b/gi, " ")
+      .replace(/^\s*[a-z]{1,5}\d{1,3}\s*:\s*/i, "")
+      .replace(/[()[\]]/g, " ")
+      .replace(/[\s\-|–—:]+$/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function parseEbayListingTitle(title, specifics) {
+    const details = specifics || {};
+    const fullNumber = fullCardNumber(details.cardNumber || title);
+    const number = cardNumber(details.cardNumber || title);
+    const rawLanguage = clean(details.language || title);
+    const language = /\b(?:japanese|jpn|jp)\b/i.test(rawLanguage) ? "japanese" : "english";
+    const evidence = `${details.grade || ""} ${details.condition || ""} ${title || ""}`;
+    const grade = /\bPSA\s*10\b/i.test(evidence)
+      ? "psa10"
+      : /\b(?:PSA|BGS|CGC|TAG|SGC)\s*9(?:\.0)?\b/i.test(evidence) ? "grade9" : "ungraded";
+    let set = clean(details.set) || inferEbaySet(title, fullNumber);
+    if (language === "japanese" && set && !/japanese/i.test(set)) set = `Pokemon Japanese ${set}`;
+    const name = clean(details.cardName) || cleanEbayCardName(title, fullNumber);
+    if (!name || !number) return null;
+    return { source: "ebay", name, number, fullNumber, set, listingLanguage: language, listingGrade: grade };
+  }
+
   function textOf(document, selector) {
     const element = document.querySelector(selector);
     return element ? clean(element.textContent || element.getAttribute("content")) : "";
@@ -84,6 +129,30 @@
       }
     }
     return "";
+  }
+
+  function ebaySpecific(document, label) {
+    const expected = label.toLowerCase();
+    const rows = document.querySelectorAll('.ux-labels-values, [class*="ux-labels-values"]');
+    for (const row of rows) {
+      const labelElement = row.querySelector('.ux-labels-values__labels, [class*="__labels"]');
+      const valueElement = row.querySelector('.ux-labels-values__values, [class*="__values"]');
+      const actual = clean(labelElement && labelElement.textContent).replace(/:$/, "").toLowerCase();
+      if (actual === expected && valueElement) return clean(valueElement.textContent);
+    }
+    return "";
+  }
+
+  function ebayPrice(document) {
+    const meta = document.querySelector('meta[itemprop="price"], meta[property="product:price:amount"]');
+    const metaValue = meta && meta.getAttribute("content");
+    if (metaValue && /\d/.test(metaValue)) {
+      const amount = Number(String(metaValue).replace(/[^\d.]/g, ""));
+      if (Number.isFinite(amount)) return `$${amount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }
+    const element = document.querySelector('.x-price-primary .ux-textspans, [data-testid="x-price-primary"] .ux-textspans, [itemprop="price"]');
+    const match = clean(element && (element.getAttribute("content") || element.textContent)).match(/(?:US\s*)?\$\s*[\d,.]+/i);
+    return match ? match[0].replace(/^US\s*/i, "") : "";
   }
 
   function detectCard(document, location) {
@@ -122,8 +191,23 @@
       };
     }
 
+    if (/ebay\.com$/.test(host) && /\/itm\//i.test(pathname)) {
+      const heading = textOf(document, "h1.x-item-title__mainTitle") || textOf(document, "h1");
+      const rawTitle = heading || metaContent(document, "og:title") || title;
+      const parsed = parseEbayListingTitle(rawTitle, {
+        cardName: ebaySpecific(document, "Card Name"),
+        cardNumber: ebaySpecific(document, "Card Number"),
+        set: ebaySpecific(document, "Set"),
+        language: ebaySpecific(document, "Language"),
+        grade: ebaySpecific(document, "Grade"),
+        condition: ebaySpecific(document, "Condition")
+      });
+      if (!parsed) return null;
+      return { ...parsed, listingPrice: ebayPrice(document), listingTitle: rawTitle };
+    }
+
     return null;
   }
 
-  return { cardNumber, fullCardNumber, cleanCardName, parseCollectrTitle, parseTcgplayerTitle, detectCard };
+  return { cardNumber, fullCardNumber, cleanCardName, parseCollectrTitle, parseTcgplayerTitle, parseEbayListingTitle, detectCard };
 });

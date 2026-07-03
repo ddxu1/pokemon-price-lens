@@ -17,6 +17,21 @@ test("parses the Collectr example", () => {
   );
 });
 
+test("parses a Collectr promo title without a set fraction", () => {
+  assert.deepEqual(
+    detector.parseCollectrTitle(
+      "Mega Charizard X ex - 023 - Mega Evolution Promos Pokemon - Collectr"
+    ),
+    {
+      source: "collectr",
+      name: "Mega Charizard X ex",
+      number: "023",
+      fullNumber: "",
+      set: "Mega Evolution Promos"
+    }
+  );
+});
+
 test("parses a TCGplayer-style product title", () => {
   assert.deepEqual(
     detector.parseTcgplayerTitle(

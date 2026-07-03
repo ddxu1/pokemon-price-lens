@@ -34,11 +34,17 @@
 
   function parseCollectrTitle(title) {
     const value = clean(title);
-    const match = value.match(
+    const fractionMatch = value.match(
       /^(.+?)\s+-\s+(\d{1,4}[a-z]?)\s*\/\s*(\d{1,4}[a-z]?)\s+-\s+(.+?)\s+Pokemon\s+-\s+Collectr$/i
     );
-    if (!match) return null;
-    return { source: "collectr", name: clean(match[1]), number: match[2], fullNumber: `${match[2]}/${match[3]}`, set: clean(match[4]) };
+    if (fractionMatch) {
+      return { source: "collectr", name: clean(fractionMatch[1]), number: fractionMatch[2], fullNumber: `${fractionMatch[2]}/${fractionMatch[3]}`, set: clean(fractionMatch[4]) };
+    }
+    const simpleMatch = value.match(
+      /^(.+?)\s+-\s+(\d{1,4}[a-z]?)\s+-\s+(.+?)\s+Pokemon\s+-\s+Collectr$/i
+    );
+    if (!simpleMatch) return null;
+    return { source: "collectr", name: clean(simpleMatch[1]), number: simpleMatch[2], fullNumber: "", set: clean(simpleMatch[3]) };
   }
 
   function parseTcgplayerTitle(title) {

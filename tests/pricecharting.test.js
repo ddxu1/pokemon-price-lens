@@ -23,6 +23,21 @@ const searchHtml = `
   </tbody></table>
 `;
 
+const ambiguousCrossLanguageHtml = `
+  <table><tbody>
+    <tr id="product-2001" data-product="2001">
+      <td class="title"><a href="https://www.pricecharting.com/game/pokemon-perfect-order/meowth-ex-107">Meowth ex #107</a><div class="console-in-title"><a href="/console/pokemon-perfect-order">Pokemon Perfect Order</a></div></td>
+      <td class="console"><a href="/console/pokemon-perfect-order">Pokemon Perfect Order</a></td>
+      <td class="price numeric used_price"><span class="js-price">$18.99</span></td>
+    </tr>
+    <tr id="product-2002" data-product="2002">
+      <td class="title"><a href="https://www.pricecharting.com/game/pokemon-japanese-nihil-zero/meowth-ex-114">Meowth ex #114</a><div class="console-in-title"><a href="/console/pokemon-japanese-nihil-zero">Pokemon Japanese Nihil Zero</a></div></td>
+      <td class="console"><a href="/console/pokemon-japanese-nihil-zero">Pokemon Japanese Nihil Zero</a></td>
+      <td class="price numeric used_price"><span class="js-price">$9.99</span></td>
+    </tr>
+  </tbody></table>
+`;
+
 test("parses English and Japanese PriceCharting rows", () => {
   const results = pricecharting.parseSearchResults(searchHtml);
   assert.equal(results.length, 2);
@@ -43,6 +58,15 @@ test("ranks the English counterpart when starting from the Japanese card", () =>
   const results = pricecharting.parseSearchResults(searchHtml);
   assert.equal(pricecharting.rankResults(results, card, "english")[0].number, "125");
   assert.equal(pricecharting.rankResults(results, card, "japanese")[0].number, "110");
+});
+
+test("does not force a weak opposite-language match with only a shared name", () => {
+  const card = { name: "Meowth ex", number: "107", set: "Pokemon Perfect Order" };
+  const results = pricecharting.parseSearchResults(ambiguousCrossLanguageHtml);
+  assert.equal(pricecharting.rankResults(results, card, "english")[0].number, "107");
+  const japanese = pricecharting.rankResults(results, card, "japanese");
+  assert.equal(japanese[0].set, "Pokemon Japanese Nihil Zero");
+  assert.equal(japanese[0].pairMatched, true);
 });
 
 test("parses the full PriceCharting grade ladder", () => {

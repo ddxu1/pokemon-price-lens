@@ -13,6 +13,11 @@
   let lookupToken = 0;
   let hidden = false;
   let minimized = false;
+  const PANEL_LAYOUT_KEY = "poke-price-lens:panel-layout:v1";
+  const PANEL_MIN_WIDTH = 320;
+  const PANEL_MIN_HEIGHT = 280;
+  const PANEL_MARGIN = 12;
+  let panelLayout = null;
 
   function escapeHtml(value) {
     return String(value == null ? "" : value)
@@ -86,6 +91,129 @@
     });
   }
 
+  function defaultPanelLayout() {
+    const width = Math.min(390, Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_MARGIN * 2));
+    const height = Math.min(540, Math.max(PANEL_MIN_HEIGHT, window.innerHeight - PANEL_MARGIN * 2));
+    return {
+      width,
+      height,
+      left: Math.max(PANEL_MARGIN, window.innerWidth - width - 18),
+      top: Math.max(PANEL_MARGIN, window.innerHeight - height - 18)
+    };
+  }
+
+  function clampPanelLayout(layout) {
+    const maxWidth = Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_MARGIN * 2);
+    const maxHeight = Math.max(PANEL_MIN_HEIGHT, window.innerHeight - PANEL_MARGIN * 2);
+    const width = Math.min(Math.max(PANEL_MIN_WIDTH, Math.round(layout.width || 0)), maxWidth);
+    const height = Math.min(Math.max(PANEL_MIN_HEIGHT, Math.round(layout.height || 0)), maxHeight);
+    const left = Math.min(
+      Math.max(PANEL_MARGIN, Math.round(layout.left || 0)),
+      Math.max(PANEL_MARGIN, window.innerWidth - width - PANEL_MARGIN)
+    );
+    const top = Math.min(
+      Math.max(PANEL_MARGIN, Math.round(layout.top || 0)),
+      Math.max(PANEL_MARGIN, window.innerHeight - height - PANEL_MARGIN)
+    );
+    return { width, height, left, top };
+  }
+
+  function applyPanelLayout(nextLayout) {
+    if (!shadow) return;
+    const panel = shadow.querySelector(".panel");
+    if (!panel) return;
+    panelLayout = clampPanelLayout(nextLayout || panelLayout || defaultPanelLayout());
+    panel.style.left = `${panelLayout.left}px`;
+    panel.style.top = `${panelLayout.top}px`;
+    panel.style.right = "auto";
+    panel.style.bottom = "auto";
+    panel.style.width = `${panelLayout.width}px`;
+    panel.style.height = minimized ? "auto" : `${panelLayout.height}px`;
+  }
+
+  function persistPanelLayout() {
+    if (!panelLayout) return;
+    chrome.storage.local.set({ [PANEL_LAYOUT_KEY]: panelLayout });
+  }
+
+  function loadPanelLayout() {
+    chrome.storage.local.get(PANEL_LAYOUT_KEY, (stored) => {
+      if (chrome.runtime.lastError) return;
+      if (stored[PANEL_LAYOUT_KEY]) applyPanelLayout(stored[PANEL_LAYOUT_KEY]);
+    });
+  }
+
+  function isInteractiveTarget(target) {
+    return Boolean(target && target.closest("button, a, select, option, input, textarea"));
+  }
+
+  function bindPanelInteractions() {
+    const panel = shadow.querySelector(".panel");
+    const header = shadow.querySelector(".header");
+    const resizeHandle = shadow.querySelector(".resize-handle");
+    if (!panel || !header || !resizeHandle) return;
+
+    header.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || isInteractiveTarget(event.target)) return;
+      applyPanelLayout(panelLayout || defaultPanelLayout());
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origin = { ...panelLayout };
+      header.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent) => {
+        applyPanelLayout({
+          ...origin,
+          left: origin.left + (moveEvent.clientX - startX),
+          top: origin.top + (moveEvent.clientY - startY)
+        });
+      };
+
+      const finish = () => {
+        header.removeEventListener("pointermove", onMove);
+        header.removeEventListener("pointerup", finish);
+        header.removeEventListener("pointercancel", finish);
+        persistPanelLayout();
+      };
+
+      header.addEventListener("pointermove", onMove);
+      header.addEventListener("pointerup", finish);
+      header.addEventListener("pointercancel", finish);
+    });
+
+    resizeHandle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || minimized) return;
+      applyPanelLayout(panelLayout || defaultPanelLayout());
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origin = { ...panelLayout };
+      resizeHandle.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent) => {
+        applyPanelLayout({
+          ...origin,
+          width: origin.width + (moveEvent.clientX - startX),
+          height: origin.height + (moveEvent.clientY - startY)
+        });
+      };
+
+      const finish = () => {
+        resizeHandle.removeEventListener("pointermove", onMove);
+        resizeHandle.removeEventListener("pointerup", finish);
+        resizeHandle.removeEventListener("pointercancel", finish);
+        persistPanelLayout();
+      };
+
+      resizeHandle.addEventListener("pointermove", onMove);
+      resizeHandle.addEventListener("pointerup", finish);
+      resizeHandle.addEventListener("pointercancel", finish);
+    });
+
+    window.addEventListener("resize", () => {
+      if (panelLayout) applyPanelLayout(panelLayout);
+    });
+  }
+
   function ensurePanel() {
     if (host) return;
     host = document.createElement("div");
@@ -97,11 +225,11 @@
         * { box-sizing: border-box; }
         .panel {
           position: fixed;
-          right: 18px;
-          bottom: 18px;
+          left: 18px;
+          top: 18px;
           z-index: 2147483647;
-          width: min(390px, calc(100vw - 24px));
-          max-height: min(760px, calc(100vh - 36px));
+          width: 390px;
+          height: min(540px, calc(100vh - 24px));
           overflow: hidden;
           border: 1px solid rgba(148, 163, 184, .28);
           border-radius: 16px;
@@ -112,17 +240,19 @@
           backdrop-filter: blur(18px) saturate(135%);
           font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
-        .header { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 10px 11px 10px 14px; border-bottom: 1px solid #1e293b; }
+        .header { display: flex; align-items: center; gap: 9px; min-height: 52px; padding: 10px 11px 10px 14px; border-bottom: 1px solid #1e293b; cursor: move; user-select: none; }
         .mark { display: grid; place-items: center; width: 29px; height: 29px; flex: none; border-radius: 50%; background: linear-gradient(#ef4444 0 45%, #f8fafc 45% 100%); border: 2px solid #020617; box-shadow: inset 0 0 0 1px rgba(255,255,255,.3); }
         .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #f8fafc; border: 2px solid #020617; }
         .heading { min-width: 0; flex: 1; }
         .brand { color: #f8fafc; font-size: 14px; font-weight: 750; letter-spacing: -.01em; }
         .card-label { overflow: hidden; color: #94a3b8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+        .header button { cursor: pointer; }
         .icon-button { display: grid; place-items: center; width: 29px; height: 29px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: #94a3b8; cursor: pointer; font: 17px/1 sans-serif; }
         .icon-button:hover { background: #1e293b; color: #f8fafc; }
-        .content { max-height: calc(min(760px, 100vh - 36px) - 53px); overflow: auto; }
+        .content { height: calc(100% - 53px); overflow: auto; }
         .panel.minimized .content { display: none; }
-        .panel.minimized { width: 280px; }
+        .panel.minimized { min-height: 0; }
+        .panel.minimized .resize-handle { display: none; }
         .status { display: flex; min-height: 190px; align-items: center; justify-content: center; padding: 26px; color: #94a3b8; text-align: center; }
         .spinner { width: 20px; height: 20px; margin: 0 auto 11px; border: 2px solid #334155; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -154,8 +284,39 @@
         .product-link { display: block; overflow: hidden; color: #f8fafc; font-size: 14px; font-weight: 680; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
         .product-link:hover { color: #93c5fd; }
         .set { overflow: hidden; color: #94a3b8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+        .match-warning {
+          margin-top: 10px;
+          padding: 9px 10px;
+          border: 1px solid rgba(251, 191, 36, .34);
+          border-radius: 9px;
+          background: rgba(120, 53, 15, .2);
+          color: #fde68a;
+        }
+        .match-warning strong {
+          display: block;
+          margin-bottom: 2px;
+          color: #fef3c7;
+          font-size: 10px;
+          letter-spacing: .05em;
+          text-transform: uppercase;
+        }
+        .match-warning span { font-size: 11px; line-height: 1.4; }
         .prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px; }
-        .price { padding: 8px 7px; border: 1px solid rgba(100, 116, 139, .38); border-radius: 9px; background: rgba(17, 27, 46, .62); }
+        .price {
+          display: block;
+          padding: 8px 7px;
+          border: 1px solid rgba(100, 116, 139, .38);
+          border-radius: 9px;
+          background: rgba(17, 27, 46, .62);
+          color: inherit;
+          text-decoration: none;
+          transition: border-color .12s ease, background .12s ease, transform .12s ease;
+        }
+        a.price:hover {
+          border-color: rgba(147, 197, 253, .72);
+          background: rgba(30, 58, 95, .78);
+          transform: translateY(-1px);
+        }
         .price-label { display: block; margin-bottom: 2px; color: #7f8ea3; font-size: 10px; text-transform: uppercase; }
         .price-value { color: #f8fafc; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
         .picker-label { display: block; margin-top: 10px; color: #7f8ea3; font-size: 10px; text-transform: uppercase; }
@@ -164,6 +325,25 @@
         .footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px 12px; color: #64748b; font-size: 10px; }
         .footer a { color: #93c5fd; text-decoration: none; }
         .retry { padding: 7px 10px; border: 1px solid #3b82f6; border-radius: 7px; background: #1d4ed8; color: white; cursor: pointer; font: 600 12px/1 sans-serif; }
+        .resize-handle {
+          position: absolute;
+          right: 0;
+          bottom: 0;
+          width: 18px;
+          height: 18px;
+          cursor: nwse-resize;
+          opacity: .75;
+        }
+        .resize-handle::before {
+          content: "";
+          position: absolute;
+          right: 4px;
+          bottom: 4px;
+          width: 10px;
+          height: 10px;
+          border-right: 2px solid rgba(147, 197, 253, .65);
+          border-bottom: 2px solid rgba(147, 197, 253, .65);
+        }
       </style>
       <section class="panel" aria-label="Poké Price Lens">
         <header class="header">
@@ -176,9 +356,13 @@
           <button class="icon-button close" type="button" title="Close" aria-label="Close">×</button>
         </header>
         <div class="content"><div class="status">Waiting for a card…</div></div>
+        <div class="resize-handle" aria-hidden="true"></div>
       </section>
     `;
     document.documentElement.appendChild(host);
+    applyPanelLayout(defaultPanelLayout());
+    bindPanelInteractions();
+    loadPanelLayout();
 
     shadow.querySelector(".close").addEventListener("click", () => {
       hidden = true;
@@ -189,6 +373,7 @@
       shadow.querySelector(".panel").classList.toggle("minimized", minimized);
       shadow.querySelector(".minimize").textContent = minimized ? "+" : "−";
       shadow.querySelector(".minimize").title = minimized ? "Expand" : "Minimize";
+      applyPanelLayout(panelLayout || defaultPanelLayout());
     });
   }
 
@@ -211,8 +396,51 @@
     return `${candidate.title}${candidate.set ? ` · ${candidate.set.replace(/^Pokémon\s+/i, "")}` : ""}`;
   }
 
-  function priceBox(label, value) {
-    return `<div class="price"><span class="price-label">${label}</span><span class="price-value">${escapeHtml(value || "—")}</span></div>`;
+  function priceBox(label, value, url) {
+    return `
+      <a class="price" href="${escapeHtml(url || "#")}" target="_blank" rel="noreferrer" title="Open this card on PriceCharting">
+        <span class="price-label">${label}</span>
+        <span class="price-value">${escapeHtml(value || "—")}</span>
+      </a>
+    `;
+  }
+
+  function matchWarning(language, group) {
+    const product = group && group.selected;
+    if (!product || !currentCard) return "";
+
+    const candidates = (group.candidates || []).filter(Boolean);
+    const selectedScore = Number(product.score || 0);
+    const otherTop = candidates.find((candidate) => candidate.url !== product.url);
+    const scoreGap = otherTop ? selectedScore - Number(otherTop.score || 0) : selectedScore;
+    const warnings = [];
+    const sourceIsJapanese = /(?:^|[\s/-])japanese(?:[\s/-]|$)/i.test(String(currentCard.set || ""));
+    const targetIsJapanese = language.toLowerCase() === "japanese";
+    const oppositeLanguage = sourceIsJapanese !== targetIsJapanese;
+
+    if (!currentCard.number) {
+      warnings.push("The source page did not expose a card number, so this match is based on name and set.");
+    }
+    if (oppositeLanguage && !product.pairMatched) {
+      warnings.push("This opposite-language match is unverified. The set pairing is not confirmed, so treat it as a likely candidate, not a guaranteed counterpart.");
+    }
+    if (selectedScore > 0 && selectedScore < 170) {
+      warnings.push("PriceCharting does not appear to have a strong exact match for this version.");
+    }
+    if (oppositeLanguage && currentCard.number && product.number && String(currentCard.number).toLowerCase() !== String(product.number).toLowerCase()) {
+      warnings.push("The opposite-language candidate has a different card number, so verify the card art and promo details before trusting the price.");
+    }
+    if (otherTop && scoreGap < 24) {
+      warnings.push(`Another ${language.toLowerCase()} candidate scored similarly, so double-check the selected set and numbering.`);
+    }
+
+    if (!warnings.length) return "";
+    return `
+      <div class="match-warning">
+        <strong>Match warning</strong>
+        <span>${escapeHtml(warnings[0])}</span>
+      </div>
+    `;
   }
 
   function navigationBlock() {
@@ -294,10 +522,11 @@
             <div class="set">${escapeHtml(product.set)}</div>
           </div>
         </div>
+        ${matchWarning(label, group)}
         <div class="prices">
-          ${priceBox("Ungraded", product.prices && product.prices.ungraded)}
-          ${priceBox("Grade 9", product.prices && product.prices.grade9)}
-          ${priceBox("PSA 10", product.prices && product.prices.psa10)}
+          ${priceBox("Ungraded", product.prices && product.prices.ungraded, product.url)}
+          ${priceBox("Grade 9", product.prices && product.prices.grade9, product.url)}
+          ${priceBox("PSA 10", product.prices && product.prices.psa10, product.url)}
         </div>
         ${candidates.length > 1 ? `<label class="picker-label">Match<select data-match-picker="${language}">${options}</select></label>` : ""}
       </section>

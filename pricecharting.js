@@ -9,7 +9,8 @@
   "use strict";
 
   const KNOWN_SET_PAIRS = {
-    "phantasmal flames": ["inferno x"]
+    "phantasmal flames": ["inferno x"],
+    "perfect order": ["nihil zero"]
   };
 
   const NON_ENGLISH_MARKERS = [
@@ -177,6 +178,21 @@
     return intersection / new Set([...a, ...b]).size;
   }
 
+  function hasKnownSetPair(cardSet, productSet, sourceIsJapanese, language) {
+    if (!cardSet || !productSet) return false;
+    if (language === "english" && sourceIsJapanese) {
+      for (const [englishSet, japaneseSets] of Object.entries(KNOWN_SET_PAIRS)) {
+        if (japaneseSets.some((set) => cardSet.includes(set)) && productSet.includes(englishSet)) return true;
+      }
+      return false;
+    }
+    if (language === "japanese" && !sourceIsJapanese) {
+      const pairedSets = KNOWN_SET_PAIRS[cardSet] || [];
+      return pairedSets.some((set) => productSet.includes(set));
+    }
+    return false;
+  }
+
   function scoreProduct(product, card, language, searchIndex) {
     const productName = normalizeName(product.name || product.title);
     const cardName = normalizeName(card.name);
@@ -188,15 +204,14 @@
     const productSet = normalizeSet(product.set);
     const cardSet = normalizeSet(card.set);
     const sourceIsJapanese = cardSet.includes("japanese");
+    const pairMatched = hasKnownSetPair(cardSet, productSet, sourceIsJapanese, language);
     if (language === "english") {
       if (!sourceIsJapanese) {
         if (cardSet && productSet === cardSet) score += 110;
         else if (cardSet && (productSet.includes(cardSet) || cardSet.includes(productSet))) score += 45;
         if (card.number && String(product.number).toLowerCase() === String(card.number).toLowerCase()) score += 100;
       } else {
-        for (const [englishSet, japaneseSets] of Object.entries(KNOWN_SET_PAIRS)) {
-          if (japaneseSets.some((set) => cardSet.includes(set)) && productSet.includes(englishSet)) score += 90;
-        }
+        if (pairMatched) score += 90;
       }
     } else {
       if (sourceIsJapanese) {
@@ -204,12 +219,14 @@
         else if (productSet.includes(cardSet) || cardSet.includes(productSet)) score += 45;
         if (card.number && String(product.number).toLowerCase() === String(card.number).toLowerCase()) score += 100;
       } else {
-        const pairedSets = KNOWN_SET_PAIRS[cardSet] || [];
-        if (pairedSets.some((set) => productSet.includes(set))) score += 90;
+        if (pairMatched) score += 90;
       }
     }
 
-    return score - searchIndex * 0.25;
+    return {
+      score: score - searchIndex * 0.25,
+      pairMatched
+    };
   }
 
   function rankResults(results, card, language, limit) {
@@ -217,7 +234,7 @@
     return eligible
       .map((product, index) => ({
         ...product,
-        score: scoreProduct(product, card, language, index)
+        ...scoreProduct(product, card, language, index)
       }))
       .filter((product) => product.score >= 35)
       .sort((a, b) => b.score - a.score)

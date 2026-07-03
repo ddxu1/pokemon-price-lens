@@ -6,6 +6,7 @@
   const queued = new Map();
   let flushTimer = null;
   let openPopover = null;
+  const DETAIL_DOCK_LAYOUT_KEY = "poke-price-lens:detail-dock-layout:v1";
 
   const style = document.createElement("style");
   style.id = "poke-price-lens-pricecharting-style";
@@ -334,8 +335,8 @@
       <style>
         :host { all: initial; }
         * { box-sizing: border-box; }
-        .dock { position: fixed; right: 18px; bottom: 18px; z-index: 2147483647; width: min(360px, calc(100vw - 24px)); overflow: hidden; border: 1px solid rgba(148, 163, 184, .28); border-radius: 15px; background: rgba(8, 15, 28, .82); color: #e5edf8; box-shadow: 0 18px 55px rgba(2, 6, 23, .38); -webkit-backdrop-filter: blur(18px) saturate(135%); backdrop-filter: blur(18px) saturate(135%); font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-        .header { display: flex; align-items: center; gap: 9px; padding: 10px 11px 10px 13px; border-bottom: 1px solid #1e293b; }
+        .dock { position: fixed; left: 18px; top: 18px; z-index: 2147483647; width: 360px; overflow: hidden; border: 1px solid rgba(148, 163, 184, .28); border-radius: 15px; background: rgba(8, 15, 28, .82); color: #e5edf8; box-shadow: 0 18px 55px rgba(2, 6, 23, .38); -webkit-backdrop-filter: blur(18px) saturate(135%); backdrop-filter: blur(18px) saturate(135%); font: 12px/1.35 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .header { display: flex; align-items: center; gap: 9px; padding: 10px 11px 10px 13px; border-bottom: 1px solid #1e293b; cursor: move; user-select: none; }
         .mark { display: grid; place-items: center; width: 27px; height: 27px; flex: none; border: 2px solid #020617; border-radius: 50%; background: linear-gradient(#ef4444 0 45%, #f8fafc 45% 100%); }
         .mark::after { content: ""; width: 7px; height: 7px; border: 2px solid #020617; border-radius: 50%; background: #f8fafc; }
         .heading { min-width: 0; flex: 1; }
@@ -352,13 +353,130 @@
         .state { flex: none; color: #64748b; font-size: 7px; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
         .current .state { color: #93c5fd; }
         .open-all { width: 100%; height: 31px; margin-top: 7px; border: 1px solid rgba(96, 165, 250, .55); border-radius: 8px; background: rgba(29, 78, 216, .34); color: #dbeafe; cursor: pointer; font: 700 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .resize-handle { position: absolute; right: 0; bottom: 0; width: 18px; height: 18px; cursor: nwse-resize; opacity: .75; }
+        .resize-handle::before { content: ""; position: absolute; right: 4px; bottom: 4px; width: 10px; height: 10px; border-right: 2px solid rgba(147, 197, 253, .65); border-bottom: 2px solid rgba(147, 197, 253, .65); }
       </style>
       <section class="dock">
         <header class="header"><span class="mark"></span><div class="heading"><div class="brand">Poké Price Lens</div><div class="card">${escapeHtml(card.name)} #${escapeHtml(card.number)}${card.set ? ` · ${escapeHtml(card.set)}` : ""}</div></div><button class="close" type="button" aria-label="Close">×</button></header>
         <div class="body"><div class="label"><span>Card navigator</span><span>Switch sites</span></div><div class="grid">${linkMarkup}</div><button class="open-all" type="button">Open all</button></div>
+        <div class="resize-handle" aria-hidden="true"></div>
       </section>
     `;
     document.documentElement.appendChild(host);
+
+    const dock = shadow.querySelector(".dock");
+    const header = shadow.querySelector(".header");
+    const resizeHandle = shadow.querySelector(".resize-handle");
+    const margin = 12;
+    const minWidth = 300;
+    const minHeight = 170;
+
+    function defaultLayout() {
+      const width = Math.min(360, Math.max(minWidth, window.innerWidth - margin * 2));
+      const bodyHeight = shadow.querySelector(".body").scrollHeight;
+      const height = Math.min(Math.max(minHeight, 58 + bodyHeight), window.innerHeight - margin * 2);
+      return {
+        width,
+        height,
+        left: Math.max(margin, window.innerWidth - width - 18),
+        top: Math.max(margin, window.innerHeight - height - 18)
+      };
+    }
+
+    function clampLayout(layout) {
+      const maxWidth = Math.max(minWidth, window.innerWidth - margin * 2);
+      const maxHeight = Math.max(minHeight, window.innerHeight - margin * 2);
+      const width = Math.min(Math.max(minWidth, Math.round(layout.width || 0)), maxWidth);
+      const height = Math.min(Math.max(minHeight, Math.round(layout.height || 0)), maxHeight);
+      const left = Math.min(Math.max(margin, Math.round(layout.left || 0)), Math.max(margin, window.innerWidth - width - margin));
+      const top = Math.min(Math.max(margin, Math.round(layout.top || 0)), Math.max(margin, window.innerHeight - height - margin));
+      return { width, height, left, top };
+    }
+
+    let dockLayout = defaultLayout();
+
+    function applyLayout(nextLayout) {
+      dockLayout = clampLayout(nextLayout || dockLayout);
+      dock.style.left = `${dockLayout.left}px`;
+      dock.style.top = `${dockLayout.top}px`;
+      dock.style.right = "auto";
+      dock.style.bottom = "auto";
+      dock.style.width = `${dockLayout.width}px`;
+      dock.style.height = `${dockLayout.height}px`;
+    }
+
+    function persistLayout() {
+      chrome.storage.local.set({ [DETAIL_DOCK_LAYOUT_KEY]: dockLayout });
+    }
+
+    function isInteractiveTarget(target) {
+      return Boolean(target && target.closest("button, a"));
+    }
+
+    header.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || isInteractiveTarget(event.target)) return;
+      applyLayout(dockLayout);
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origin = { ...dockLayout };
+      header.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent) => {
+        applyLayout({
+          ...origin,
+          left: origin.left + (moveEvent.clientX - startX),
+          top: origin.top + (moveEvent.clientY - startY)
+        });
+      };
+
+      const finish = () => {
+        header.removeEventListener("pointermove", onMove);
+        header.removeEventListener("pointerup", finish);
+        header.removeEventListener("pointercancel", finish);
+        persistLayout();
+      };
+
+      header.addEventListener("pointermove", onMove);
+      header.addEventListener("pointerup", finish);
+      header.addEventListener("pointercancel", finish);
+    });
+
+    resizeHandle.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0) return;
+      applyLayout(dockLayout);
+      const startX = event.clientX;
+      const startY = event.clientY;
+      const origin = { ...dockLayout };
+      resizeHandle.setPointerCapture(event.pointerId);
+
+      const onMove = (moveEvent) => {
+        applyLayout({
+          ...origin,
+          width: origin.width + (moveEvent.clientX - startX),
+          height: origin.height + (moveEvent.clientY - startY)
+        });
+      };
+
+      const finish = () => {
+        resizeHandle.removeEventListener("pointermove", onMove);
+        resizeHandle.removeEventListener("pointerup", finish);
+        resizeHandle.removeEventListener("pointercancel", finish);
+        persistLayout();
+      };
+
+      resizeHandle.addEventListener("pointermove", onMove);
+      resizeHandle.addEventListener("pointerup", finish);
+      resizeHandle.addEventListener("pointercancel", finish);
+    });
+
+    chrome.storage.local.get(DETAIL_DOCK_LAYOUT_KEY, (stored) => {
+      if (!chrome.runtime.lastError && stored[DETAIL_DOCK_LAYOUT_KEY]) {
+        applyLayout(stored[DETAIL_DOCK_LAYOUT_KEY]);
+      } else {
+        applyLayout(defaultLayout());
+      }
+    });
+    window.addEventListener("resize", () => applyLayout(dockLayout));
     shadow.querySelector(".close").addEventListener("click", () => host.remove());
     shadow.querySelector(".open-all").addEventListener("click", async (event) => {
       const button = event.currentTarget;

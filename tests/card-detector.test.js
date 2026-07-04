@@ -115,3 +115,26 @@ test("uses eBay item specifics for a Japanese PSA 10 listing", () => {
     }
   );
 });
+
+test("parses an eBay product-page title that redirects away from /itm/", () => {
+  assert.deepEqual(
+    detector.parseEbayListingTitle(
+      "Pikachu ex 764/742 Start Deck 100 Battle Collection Holo (Japanese) for sale online | eBay",
+      {
+        cardName: "Pikachu Ex -",
+        cardNumber: "764/742",
+        set: "Start Deck 100 Battle Collection",
+        language: "Japanese"
+      }
+    ),
+    {
+      source: "ebay",
+      name: "Pikachu Ex -",
+      number: "764",
+      fullNumber: "764/742",
+      set: "Pokemon Japanese Start Deck 100 Battle Collection",
+      listingLanguage: "japanese",
+      listingGrade: "ungraded"
+    }
+  );
+});

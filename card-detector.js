@@ -242,7 +242,7 @@
       };
     }
 
-    if (/ebay\.com$/.test(host) && /\/itm\//i.test(pathname)) {
+    if (/ebay\.com$/.test(host) && /\/(?:itm|p)\//i.test(pathname)) {
       const heading = textOf(document, "h1.x-item-title__mainTitle") || textOf(document, "h1");
       const rawTitle = heading || metaContent(document, "og:title") || title;
       const parsed = parseEbayListingTitle(rawTitle, {

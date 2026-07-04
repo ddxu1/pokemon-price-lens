@@ -34,6 +34,10 @@ test("builds precise marketplace search fallbacks", () => {
   const ebay = new URL(navigation.ebaySearchUrl({ ...card, fullNumber: "125/094" }));
   assert.equal(ebay.hostname, "www.ebay.com");
   assert.match(ebay.searchParams.get("_nkw"), /125\/094/);
+
+  const sold = new URL(navigation.ebaySearchUrl(card, { sold: true }));
+  assert.equal(sold.searchParams.get("LH_Sold"), "1");
+  assert.equal(sold.searchParams.get("LH_Complete"), "1");
 });
 
 test("prefers remembered marketplace links and exact PriceCharting matches", () => {
@@ -72,4 +76,15 @@ test("classifies a Japanese PriceCharting row for its navigation menu", () => {
   const lookup = navigation.lookupForPriceChartingProduct(product);
   assert.equal(lookup.japanese.selected, product);
   assert.equal(lookup.english, undefined);
+});
+
+test("switches the navigator eBay target into sold-comps mode", () => {
+  const links = navigation.resolveLinks(card, {}, {}, "https://www.tcgplayer.com/product/123/example", {
+    soldComps: true
+  });
+  const ebay = links.find((link) => link.id === "ebay");
+  assert.equal(ebay.label, "eBay sold");
+  const url = new URL(ebay.url);
+  assert.equal(url.searchParams.get("LH_Sold"), "1");
+  assert.equal(url.searchParams.get("LH_Complete"), "1");
 });

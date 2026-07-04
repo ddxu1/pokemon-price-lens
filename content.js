@@ -13,10 +13,14 @@
   let lookupToken = 0;
   let hidden = false;
   let minimized = false;
+  let soldCompsMode = false;
   const PANEL_LAYOUT_KEY = "poke-price-lens:panel-layout:v1";
-  const PANEL_MIN_WIDTH = 320;
-  const PANEL_MIN_HEIGHT = 280;
+  const SOLD_COMPS_KEY = "poke-price-lens:sold-comps-mode:v1";
+  const PANEL_MIN_WIDTH = 760;
+  const PANEL_MIN_HEIGHT = 260;
   const PANEL_MARGIN = 12;
+  const COMPACT_PANEL_WIDTH = 360;
+  const COMPACT_PANEL_HEIGHT = 160;
   let panelLayout = null;
 
   function escapeHtml(value) {
@@ -53,6 +57,20 @@
         [key]: { ...(stored[key] || {}), [language]: url }
       });
     });
+  }
+
+  function loadSoldCompsMode() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(SOLD_COMPS_KEY, (stored) => {
+        if (chrome.runtime.lastError) return resolve(false);
+        resolve(Boolean(stored[SOLD_COMPS_KEY]));
+      });
+    });
+  }
+
+  function saveSoldCompsMode(nextValue) {
+    soldCompsMode = Boolean(nextValue);
+    chrome.storage.local.set({ [SOLD_COMPS_KEY]: soldCompsMode });
   }
 
   function getKnownLinks(card) {
@@ -92,13 +110,24 @@
   }
 
   function defaultPanelLayout() {
-    const width = Math.min(390, Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_MARGIN * 2));
-    const height = Math.min(540, Math.max(PANEL_MIN_HEIGHT, window.innerHeight - PANEL_MARGIN * 2));
+    const width = Math.min(1080, Math.max(PANEL_MIN_WIDTH, window.innerWidth - PANEL_MARGIN * 2));
+    const height = Math.min(440, Math.max(PANEL_MIN_HEIGHT, window.innerHeight - PANEL_MARGIN * 2));
     return {
       width,
       height,
-      left: Math.max(PANEL_MARGIN, window.innerWidth - width - 18),
-      top: Math.max(PANEL_MARGIN, window.innerHeight - height - 18)
+      left: Math.max(PANEL_MARGIN, Math.round((window.innerWidth - width) / 2)),
+      top: PANEL_MARGIN
+    };
+  }
+
+  function compactPanelLayout() {
+    const width = Math.min(COMPACT_PANEL_WIDTH, Math.max(320, window.innerWidth - PANEL_MARGIN * 2));
+    const height = Math.min(COMPACT_PANEL_HEIGHT, Math.max(140, window.innerHeight - PANEL_MARGIN * 2));
+    return {
+      width,
+      height,
+      left: Math.max(PANEL_MARGIN, Math.round((window.innerWidth - width) / 2)),
+      top: PANEL_MARGIN
     };
   }
 
@@ -225,11 +254,11 @@
         * { box-sizing: border-box; }
         .panel {
           position: fixed;
-          left: 18px;
-          top: 18px;
+          left: 12px;
+          top: 12px;
           z-index: 2147483647;
-          width: 390px;
-          height: min(540px, calc(100vh - 24px));
+          width: min(1080px, calc(100vw - 24px));
+          height: min(440px, calc(100vh - 24px));
           overflow: hidden;
           border: 1px solid rgba(148, 163, 184, .28);
           border-radius: 16px;
@@ -256,19 +285,21 @@
         .status { display: flex; min-height: 190px; align-items: center; justify-content: center; padding: 26px; color: #94a3b8; text-align: center; }
         .spinner { width: 20px; height: 20px; margin: 0 auto 11px; border: 2px solid #334155; border-top-color: #60a5fa; border-radius: 50%; animation: spin .8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
-        .site-nav { padding: 12px 14px 13px; border-bottom: 1px solid #1e293b; }
-        .site-nav-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; color: #7f8ea3; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
-        .site-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-        .site-link { position: relative; display: flex; min-width: 0; min-height: 36px; align-items: center; justify-content: space-between; gap: 6px; padding: 7px 8px; border: 1px solid rgba(100, 116, 139, .4); border-radius: 8px; background: rgba(17, 27, 46, .58); color: #dbeafe; font-size: 11px; font-weight: 650; text-decoration: none; }
+        .overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 12px; align-content: start; }
+        .full-span { grid-column: 1 / -1; }
+        .site-nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 13px; border: 1px solid rgba(30, 41, 59, .9); border-radius: 12px; background: rgba(15, 23, 42, .48); }
+        .site-nav-title { display: flex; align-items: center; gap: 10px; color: #7f8ea3; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; white-space: nowrap; }
+        .site-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+        .site-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+        .site-link { position: relative; display: inline-flex; width: 34px; height: 34px; align-items: center; justify-content: center; border: 1px solid rgba(100, 116, 139, .4); border-radius: 10px; background: rgba(17, 27, 46, .58); color: #dbeafe; font-size: 10px; font-weight: 800; text-decoration: none; letter-spacing: .04em; }
         a.site-link:hover { border-color: rgba(147, 197, 253, .7); background: rgba(30, 58, 95, .7); }
         .site-link.current { border-color: #60a5fa; background: rgba(30, 64, 175, .26); color: #f8fafc; cursor: default; }
-        .site-state { flex: none; color: #64748b; font-size: 8px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
-        .site-link.current .site-state { color: #93c5fd; }
-        .open-all { width: 100%; height: 32px; margin-top: 7px; border: 1px solid rgba(96, 165, 250, .55); border-radius: 8px; background: rgba(29, 78, 216, .32); color: #dbeafe; cursor: pointer; font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .site-state { display: none; }
+        .open-all { height: 32px; padding: 0 10px; border: 1px solid rgba(96, 165, 250, .55); border-radius: 8px; background: rgba(29, 78, 216, .32); color: #dbeafe; cursor: pointer; font: 700 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; white-space: nowrap; }
         .open-all:hover { background: rgba(29, 78, 216, .5); color: white; }
-        .listing-comparison { padding: 12px 14px 13px; border-bottom: 1px solid #1e293b; }
+        .listing-comparison { padding: 12px 14px 13px; border: 1px solid rgba(30, 41, 59, .9); border-radius: 12px; background: rgba(15, 23, 42, .48); }
         .comparison-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; color: #7f8ea3; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; }
-        .comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+        .comparison-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
         .comparison-value { padding: 9px; border: 1px solid rgba(100, 116, 139, .38); border-radius: 9px; background: rgba(17, 27, 46, .62); }
         .comparison-value span { display: block; color: #7f8ea3; font-size: 9px; text-transform: uppercase; }
         .comparison-value strong { color: #f8fafc; font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -276,35 +307,36 @@
         .comparison-verdict.good { color: #86efac; }
         .comparison-verdict.high { color: #fca5a5; }
         .comparison-note { margin-top: 3px; color: #64748b; font-size: 9px; }
-        .language { padding: 14px; border-bottom: 1px solid #1e293b; }
+        .language { padding: 14px; border: 1px solid rgba(30, 41, 59, .9); border-radius: 12px; background: rgba(15, 23, 42, .48); }
         .language-top { display: flex; align-items: center; gap: 11px; }
         .thumb { width: 52px; height: 72px; flex: none; border-radius: 5px; background: #172033; object-fit: cover; box-shadow: 0 2px 10px rgba(0,0,0,.28); }
         .meta { min-width: 0; flex: 1; }
-        .language-name { margin-bottom: 3px; color: #93c5fd; font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+        .language-name-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+        .language-name { color: #93c5fd; font-size: 11px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
         .product-link { display: block; overflow: hidden; color: #f8fafc; font-size: 14px; font-weight: 680; text-decoration: none; text-overflow: ellipsis; white-space: nowrap; }
         .product-link:hover { color: #93c5fd; }
         .set { overflow: hidden; color: #94a3b8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-        .match-warning {
-          margin-top: 10px;
-          padding: 9px 10px;
-          border: 1px solid rgba(251, 191, 36, .34);
-          border-radius: 9px;
-          background: rgba(120, 53, 15, .2);
-          color: #fde68a;
-        }
-        .match-warning strong {
-          display: block;
-          margin-bottom: 2px;
-          color: #fef3c7;
+        .match-indicator {
+          display: inline-grid;
+          place-items: center;
+          width: 14px;
+          height: 14px;
+          border: 1px solid rgba(96, 165, 250, .55);
+          border-radius: 999px;
+          background: rgba(30, 64, 175, .18);
+          color: #93c5fd;
           font-size: 10px;
-          letter-spacing: .05em;
-          text-transform: uppercase;
+          font-weight: 700;
+          line-height: 1;
+          cursor: help;
         }
-        .match-warning span { font-size: 11px; line-height: 1.4; }
-        .prices { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin-top: 12px; }
+        .prices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 12px; }
         .price {
-          display: block;
-          padding: 8px 7px;
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 8px 9px;
           border: 1px solid rgba(100, 116, 139, .38);
           border-radius: 9px;
           background: rgba(17, 27, 46, .62);
@@ -317,13 +349,20 @@
           background: rgba(30, 58, 95, .78);
           transform: translateY(-1px);
         }
-        .price-label { display: block; margin-bottom: 2px; color: #7f8ea3; font-size: 10px; text-transform: uppercase; }
-        .price-value { color: #f8fafc; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; }
+        .price-label { color: #7f8ea3; font-size: 10px; text-transform: uppercase; white-space: nowrap; }
+        .price-value { color: #f8fafc; font-size: 14px; font-weight: 750; font-variant-numeric: tabular-nums; white-space: nowrap; }
+        .stats { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+        .stat-pill { display: inline-flex; align-items: center; min-height: 24px; padding: 0 8px; border-radius: 999px; background: rgba(30, 41, 59, .7); color: #cbd5e1; font-size: 10px; white-space: nowrap; }
+        .stat-pill.good { background: rgba(22, 101, 52, .26); color: #86efac; }
+        .stat-pill.warn { background: rgba(127, 29, 29, .26); color: #fca5a5; }
         .picker-label { display: block; margin-top: 10px; color: #7f8ea3; font-size: 10px; text-transform: uppercase; }
         select { width: 100%; height: 31px; margin-top: 4px; padding: 0 27px 0 8px; border: 1px solid rgba(100, 116, 139, .55); border-radius: 7px; background: rgba(17, 24, 39, .78); color: #cbd5e1; font: 11px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
         .empty { padding: 15px; border: 1px dashed #334155; border-radius: 10px; color: #94a3b8; }
-        .footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px 12px; color: #64748b; font-size: 10px; }
+        .footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 2px 2px 0; color: #64748b; font-size: 10px; }
         .footer a { color: #93c5fd; text-decoration: none; }
+        .footer-actions { display: flex; align-items: center; gap: 8px; }
+        .secondary-button { padding: 6px 8px; border: 1px solid rgba(96, 165, 250, .45); border-radius: 7px; background: rgba(29, 78, 216, .16); color: #dbeafe; cursor: pointer; font: 600 11px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        .secondary-button:hover { background: rgba(29, 78, 216, .3); color: #fff; }
         .retry { padding: 7px 10px; border: 1px solid #3b82f6; border-radius: 7px; background: #1d4ed8; color: white; cursor: pointer; font: 600 12px/1 sans-serif; }
         .resize-handle {
           position: absolute;
@@ -343,6 +382,13 @@
           height: 10px;
           border-right: 2px solid rgba(147, 197, 253, .65);
           border-bottom: 2px solid rgba(147, 197, 253, .65);
+        }
+        @media (max-width: 900px) {
+          .overview { grid-template-columns: 1fr; }
+          .site-nav { flex-wrap: wrap; }
+          .site-actions { width: 100%; justify-content: space-between; }
+          .prices { grid-template-columns: 1fr; }
+          .comparison-grid { grid-template-columns: 1fr; }
         }
       </style>
       <section class="panel" aria-label="Poké Price Lens">
@@ -387,6 +433,7 @@
   function renderLoading(card) {
     ensurePanel();
     setCardLabel(card);
+    applyPanelLayout(compactPanelLayout());
     shadow.querySelector(".content").innerHTML = `
       <div class="status"><div><div class="spinner"></div>Finding English and Japanese matches…</div></div>
     `;
@@ -399,13 +446,48 @@
   function priceBox(label, value, url) {
     return `
       <a class="price" href="${escapeHtml(url || "#")}" target="_blank" rel="noreferrer" title="Open this card on PriceCharting">
-        <span class="price-label">${label}</span>
-        <span class="price-value">${escapeHtml(value || "—")}</span>
+        <span class="price-label">${label}</span><span class="price-value">${escapeHtml(value || "—")}</span>
       </a>
     `;
   }
 
-  function matchWarning(language, group) {
+  function liquidityClass(label) {
+    return label === "high" ? "good" : label === "low" ? "warn" : "";
+  }
+
+  function statsBlock(product) {
+    const stats = product && product.stats || {};
+    const pills = [
+      stats.psa10Pop != null ? `Pop ${stats.psa10Pop}` : "",
+      stats.totalGraded != null ? `Graded ${stats.totalGraded}` : "",
+      stats.psa10Percentage || "",
+      stats.volumeText || ""
+    ].filter(Boolean);
+    if (!pills.length) return "";
+    return `
+      <div class="stats">
+        ${pills.map((pill, index) => `<span class="stat-pill ${index === pills.length - 1 ? liquidityClass(stats.liquidityLabel) : ""}">${escapeHtml(pill)}</span>`).join("")}
+      </div>
+    `;
+  }
+
+  function deltaBlock(language) {
+    if (language !== "japanese" || !currentResult || !currentResult.english || !currentResult.japanese) return "";
+    const english = currentResult.english.selected;
+    const japanese = currentResult.japanese.selected;
+    const englishPrice = numericPrice(english && english.prices && english.prices.psa10);
+    const japanesePrice = numericPrice(japanese && japanese.prices && japanese.prices.psa10);
+    if (englishPrice == null || japanesePrice == null || !japanesePrice) return "";
+    if (englishPrice === japanesePrice) {
+      return `<div class="stats"><span class="stat-pill">EN = JP</span></div>`;
+    }
+    const ratio = englishPrice > japanesePrice ? englishPrice / japanesePrice : japanesePrice / englishPrice;
+    const tone = englishPrice > japanesePrice ? "good" : "warn";
+    const label = englishPrice > japanesePrice ? `EN is ${ratio.toFixed(1)}× JP` : `JP is ${ratio.toFixed(1)}× EN`;
+    return `<div class="stats"><span class="stat-pill ${tone}">${escapeHtml(label)}</span></div>`;
+  }
+
+  function matchIndicator(language, group) {
     const product = group && group.selected;
     if (!product || !currentCard) return "";
 
@@ -435,28 +517,36 @@
     }
 
     if (!warnings.length) return "";
-    return `
-      <div class="match-warning">
-        <strong>Match warning</strong>
-        <span>${escapeHtml(warnings[0])}</span>
-      </div>
-    `;
+    return `<span class="match-indicator" title="${escapeHtml(warnings[0])}" aria-label="${escapeHtml(warnings[0])}">i</span>`;
+  }
+
+  function siteIcon(id) {
+    return ({
+      collectr: "CL",
+      tcgplayer: "TCG",
+      "pricecharting-english": "EN",
+      "pricecharting-japanese": "JP",
+      ebay: "EB"
+    })[id] || "↗";
   }
 
   function navigationBlock() {
     if (!currentNavigation.length) return "";
     const links = currentNavigation.map((item) => {
       const state = item.current ? "Here" : item.exact ? "Exact" : "Search";
-      const inner = `<span>${escapeHtml(item.label)}</span><span class="site-state">${state}</span>`;
+      const inner = `<span aria-hidden="true">${escapeHtml(siteIcon(item.id))}</span><span class="site-state">${state}</span>`;
       return item.current
-        ? `<span class="site-link current" title="Current site">${inner}</span>`
-        : `<a class="site-link" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer">${inner}</a>`;
+        ? `<span class="site-link current" title="${escapeHtml(`${item.label} · ${state}`)}" aria-label="${escapeHtml(`${item.label} · ${state}`)}">${inner}</span>`
+        : `<a class="site-link" href="${escapeHtml(item.url)}" target="_blank" rel="noreferrer" title="${escapeHtml(`${item.label} · ${state}`)}" aria-label="${escapeHtml(`${item.label} · ${state}`)}">${inner}</a>`;
     }).join("");
     return `
-      <nav class="site-nav" aria-label="Open this card on another site">
-        <div class="site-nav-title"><span>Card navigator</span><span>Poké Price Lens</span></div>
+      <nav class="site-nav full-span" aria-label="Open this card on another site">
+        <div class="site-nav-title"><span>Card navigator</span></div>
         <div class="site-grid">${links}</div>
-        <button class="open-all" type="button" data-open-all>Open all</button>
+        <div class="site-actions">
+          <label><input type="checkbox" data-sold-toggle ${soldCompsMode ? "checked" : ""}> Sold comps</label>
+          <button class="open-all" type="button" data-open-all>Open all</button>
+        </div>
       </nav>
     `;
   }
@@ -517,17 +607,21 @@
         <div class="language-top">
           ${product.image ? `<img class="thumb" src="${escapeHtml(product.image.replace(/\/60\.jpg(?:\?.*)?$/, "/240.jpg"))}" alt="">` : ""}
           <div class="meta">
-            <div class="language-name">${label}</div>
+            <div class="language-name-row">
+              <div class="language-name">${label}</div>
+              ${matchIndicator(label, group)}
+            </div>
             <a class="product-link" href="${escapeHtml(product.url)}" target="_blank" rel="noreferrer">${escapeHtml(product.title)}</a>
             <div class="set">${escapeHtml(product.set)}</div>
           </div>
         </div>
-        ${matchWarning(label, group)}
         <div class="prices">
           ${priceBox("Ungraded", product.prices && product.prices.ungraded, product.url)}
           ${priceBox("Grade 9", product.prices && product.prices.grade9, product.url)}
           ${priceBox("PSA 10", product.prices && product.prices.psa10, product.url)}
         </div>
+        ${statsBlock(product)}
+        ${deltaBlock(language)}
         ${candidates.length > 1 ? `<label class="picker-label">Match<select data-match-picker="${language}">${options}</select></label>` : ""}
       </section>
     `;
@@ -541,14 +635,20 @@
     if (!currentCard || !currentResult) return;
     setCardLabel(currentCard);
     const when = new Date(currentResult.fetchedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+    const listingBlock = listingComparisonBlock();
     shadow.querySelector(".content").innerHTML = `
+      <div class="overview">
       ${navigationBlock()}
-      ${listingComparisonBlock()}
+      ${listingBlock ? `<div class="full-span">${listingBlock}</div>` : ""}
       ${languageBlock("english", "English", currentResult.english)}
       ${languageBlock("japanese", "Japanese", currentResult.japanese)}
-      <div class="footer">
+      <div class="footer full-span">
         <span>PriceCharting · checked ${escapeHtml(when)}</span>
-        <a href="${escapeHtml(genericSearchUrl(currentCard))}" target="_blank" rel="noreferrer">View all matches ↗</a>
+        <span class="footer-actions">
+          ${currentResult.english && currentResult.english.selected && currentResult.japanese && currentResult.japanese.selected ? `<button class="secondary-button" type="button" data-pin-pair>Pin pair</button>` : ""}
+          <a href="${escapeHtml(genericSearchUrl(currentCard))}" target="_blank" rel="noreferrer">View all matches ↗</a>
+        </span>
+      </div>
       </div>
     `;
 
@@ -557,6 +657,10 @@
     }
     const openAll = shadow.querySelector("[data-open-all]");
     if (openAll) openAll.addEventListener("click", () => openAllSites(openAll));
+    const soldToggle = shadow.querySelector("[data-sold-toggle]");
+    if (soldToggle) soldToggle.addEventListener("change", toggleSoldCompsMode);
+    const pinButton = shadow.querySelector("[data-pin-pair]");
+    if (pinButton) pinButton.addEventListener("click", () => pinCurrentPair(pinButton));
   }
 
   async function openAllSites(button) {
@@ -578,6 +682,39 @@
     }
   }
 
+  function refreshNavigation() {
+    currentNavigation = navigation.resolveLinks(currentCard, currentResult, currentKnownLinks, location.href, {
+      soldComps: soldCompsMode
+    });
+  }
+
+  function toggleSoldCompsMode(event) {
+    saveSoldCompsMode(event.currentTarget.checked);
+    if (currentCard && currentResult) {
+      refreshNavigation();
+      renderResult();
+    }
+  }
+
+  async function pinCurrentPair(button) {
+    const english = currentResult && currentResult.english && currentResult.english.selected;
+    const japanese = currentResult && currentResult.japanese && currentResult.japanese.selected;
+    if (!english || !japanese) return;
+    button.disabled = true;
+    button.textContent = "Pinning…";
+    try {
+      await sendMessage({
+        type: "PC_PIN_COUNTERPART",
+        englishUrl: english.url,
+        japaneseUrl: japanese.url
+      });
+      button.textContent = "Pinned";
+    } catch (error) {
+      button.textContent = "Couldn’t pin";
+      button.title = error.message;
+    }
+  }
+
   async function changeMatch(language, url) {
     if (!currentResult || !currentCard) return;
     const group = currentResult[language];
@@ -588,7 +725,7 @@
     try {
       group.selected = await sendMessage({ type: "PC_DETAIL", product: candidate });
       currentResult.fetchedAt = Date.now();
-      currentNavigation = navigation.resolveLinks(currentCard, currentResult, currentKnownLinks, location.href);
+      refreshNavigation();
       savePreferred(currentCard, language, url);
       renderResult();
     } catch (error) {
@@ -607,6 +744,7 @@
   function renderError(error) {
     ensurePanel();
     setCardLabel(currentCard);
+    applyPanelLayout(compactPanelLayout());
     const fallback = currentCard ? genericSearchUrl(currentCard) : "https://www.pricecharting.com/";
     shadow.querySelector(".content").innerHTML = `
       <div class="status"><div>
@@ -619,6 +757,7 @@
   function renderNotDetected() {
     ensurePanel();
     setCardLabel(null);
+    applyPanelLayout(compactPanelLayout());
     shadow.querySelector(".content").innerHTML = `
       <div class="status">Open an individual Pokémon card product page on Collectr or TCGplayer.</div>
     `;
@@ -634,15 +773,18 @@
     renderLoading(card);
 
     try {
-      const [preferred, knownLinks] = await Promise.all([
+      const [preferred, knownLinks, storedSoldCompsMode] = await Promise.all([
         getPreferred(card),
-        rememberCurrentSite(card)
+        rememberCurrentSite(card),
+        loadSoldCompsMode()
       ]);
+      soldCompsMode = storedSoldCompsMode;
       currentKnownLinks = knownLinks;
       const result = await sendMessage({ type: "PC_LOOKUP", card, preferred });
       if (token !== lookupToken) return;
       currentResult = result;
-      currentNavigation = navigation.resolveLinks(card, result, knownLinks, location.href);
+      refreshNavigation();
+      applyPanelLayout(panelLayout && panelLayout.width >= PANEL_MIN_WIDTH ? panelLayout : defaultPanelLayout());
       renderResult();
     } catch (error) {
       if (token !== lookupToken) return;

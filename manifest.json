@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Poké Price Lens",
   "description": "See matching English and Japanese PriceCharting values while browsing Pokémon cards.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "permissions": ["activeTab", "storage"],
   "host_permissions": ["https://www.pricecharting.com/*"],
   "background": {
@@ -29,7 +29,8 @@
         "https://app.getcollectr.com/*",
         "https://www.tcgplayer.com/*",
         "https://shop.tcgplayer.com/*",
-        "https://www.ebay.com/itm/*"
+        "https://www.ebay.com/itm/*",
+        "https://www.ebay.com/p/*"
       ],
       "js": ["navigation.js", "card-detector.js", "content.js"],
       "run_at": "document_idle"

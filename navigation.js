@@ -56,8 +56,14 @@
     return `https://www.pricecharting.com/search-products?type=prices&q=${encodeURIComponent(`${card && card.name || ""}${suffix}`.trim())}`;
   }
 
-  function ebaySearchUrl(card) {
-    return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(searchQuery(card))}`;
+  function ebaySearchUrl(card, options) {
+    const sold = Boolean(options && options.sold);
+    const params = new URLSearchParams({ _nkw: searchQuery(card) });
+    if (sold) {
+      params.set("LH_Sold", "1");
+      params.set("LH_Complete", "1");
+    }
+    return `https://www.ebay.com/sch/i.html?${params.toString()}`;
   }
 
   function hostname(url) {
@@ -82,8 +88,9 @@
     return /(?:^|[\s/-])japanese(?:[\s/-]|$)/i.test(`${product && product.set || ""} ${product && product.url || ""}`);
   }
 
-  function resolveLinks(card, lookup, knownLinks, currentUrl) {
+  function resolveLinks(card, lookup, knownLinks, currentUrl, options) {
     const known = knownLinks || {};
+    const soldMode = Boolean(options && options.soldComps);
     const currentHost = hostname(currentUrl);
     const englishProduct = lookup && lookup.english && lookup.english.selected;
     const japaneseProduct = lookup && lookup.japanese && lookup.japanese.selected;
@@ -125,10 +132,10 @@
       },
       {
         id: "ebay",
-        label: "eBay",
-        url: currentIsEbay ? currentUrl : ebaySearchUrl(card),
+        label: soldMode ? "eBay sold" : "eBay",
+        url: currentIsEbay && !soldMode ? currentUrl : ebaySearchUrl(card, { sold: soldMode }),
         exact: currentIsEbay,
-        current: currentIsEbay
+        current: currentIsEbay && !soldMode
       }
     ];
   }

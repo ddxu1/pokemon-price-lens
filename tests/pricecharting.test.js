@@ -1,5 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const pricecharting = require("../pricecharting");
 
 const searchHtml = `
@@ -46,6 +48,15 @@ test("parses English and Japanese PriceCharting rows", () => {
   assert.equal(results[1].number, "110");
 });
 
+test("loads known set pairs from the JSON dataset shape", () => {
+  const dataset = JSON.parse(
+    fs.readFileSync(path.join(__dirname, "..", "set-pairs.json"), "utf8")
+  );
+  const configured = pricecharting.configureSetPairs(dataset);
+  assert.deepEqual(configured.englishToJapanese["phantasmal flames"], ["inferno x"]);
+  assert.deepEqual(configured.japaneseToEnglish["nihil zero"], ["perfect order"]);
+});
+
 test("ranks the exact English card and paired Japanese set", () => {
   const card = { name: "Mega Charizard X ex", number: "125", set: "Phantasmal Flames" };
   const results = pricecharting.parseSearchResults(searchHtml);
@@ -77,13 +88,42 @@ test("parses the full PriceCharting grade ladder", () => {
     <td id="graded_price"><span class="price js-price">$862.50</span></td>
     <td id="box_only_price"><span class="price js-price">$1,497.78</span></td>
     <td id="manual_only_price"><span class="price js-price">$2,399.00</span></td>
+    <div>volume: 1 sale per day volume: 1 sale per year volume: 2 sales per month volume: 1 sale per day volume: 1 sale per week volume: 8 sales per day</div>
+    <div>PSA 10 Pop 123</div>
+    <div>Total Graded 456</div>
   `;
   assert.deepEqual(pricecharting.parseProductDetail(html), {
-    ungraded: "$834.82",
-    grade7: "$755.74",
-    grade8: "$797.71",
-    grade9: "$862.50",
-    grade95: "$1,497.78",
-    psa10: "$2,399.00"
+    prices: {
+      ungraded: "$834.82",
+      grade7: "$755.74",
+      grade8: "$797.71",
+      grade9: "$862.50",
+      grade95: "$1,497.78",
+      psa10: "$2,399.00"
+    },
+    stats: {
+      volumeText: "8 sales per day",
+      liquidityLabel: "high",
+      volumes: {
+        ungraded: "1 sale per day",
+        grade7: "1 sale per year",
+        grade8: "2 sales per month",
+        grade9: "1 sale per day",
+        grade95: "1 sale per week",
+        psa10: "8 sales per day"
+      },
+      psa10Pop: 123,
+      totalGraded: 456,
+      psa10Percentage: "27.0%"
+    }
   });
+});
+
+test("parses rare as low liquidity from PriceCharting volume text", () => {
+  assert.equal(pricecharting.parseLiquidityLabel("rare"), "low");
+});
+
+test("normalizes flattened volume text to just the liquidity phrase", () => {
+  const html = `<div>volume: 9 sales per day Grade 9 Grade 9.5 PSA 10 $263.05 - $0.88</div>`;
+  assert.equal(pricecharting.parseProductDetail(html).stats.volumeText, "9 sales per day");
 });

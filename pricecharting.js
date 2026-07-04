@@ -8,9 +8,15 @@
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   "use strict";
 
-  const KNOWN_SET_PAIRS = {
-    "phantasmal flames": ["inferno x"],
-    "perfect order": ["nihil zero"]
+  let setPairs = {
+    englishToJapanese: {
+      "phantasmal flames": ["inferno x"],
+      "perfect order": ["nihil zero"]
+    },
+    japaneseToEnglish: {
+      "inferno x": ["phantasmal flames"],
+      "nihil zero": ["perfect order"]
+    }
   };
 
   const NON_ENGLISH_MARKERS = [
@@ -75,6 +81,42 @@
       .replace(/[^a-z0-9]+/g, " ")
       .replace(/\s+/g, " ")
       .trim();
+  }
+
+  function buildSetPairIndex(dataset) {
+    const englishToJapanese = {};
+    const japaneseToEnglish = {};
+    const pairs = Array.isArray(dataset && dataset.pairs) ? dataset.pairs : [];
+
+    for (const pair of pairs) {
+      const english = normalizeSet(pair && pair.english);
+      const japanese = Array.isArray(pair && pair.japanese)
+        ? pair.japanese.map(normalizeSet).filter(Boolean)
+        : [];
+      if (!english || !japanese.length) continue;
+      englishToJapanese[english] = Array.from(new Set(japanese));
+      for (const japaneseSet of japanese) {
+        japaneseToEnglish[japaneseSet] = Array.from(new Set([
+          ...(japaneseToEnglish[japaneseSet] || []),
+          english
+        ]));
+      }
+    }
+
+    return { englishToJapanese, japaneseToEnglish };
+  }
+
+  function configureSetPairs(dataset) {
+    const next = buildSetPairIndex(dataset);
+    if (Object.keys(next.englishToJapanese).length) setPairs = next;
+    return getSetPairs();
+  }
+
+  function getSetPairs() {
+    return {
+      englishToJapanese: { ...setPairs.englishToJapanese },
+      japaneseToEnglish: { ...setPairs.japaneseToEnglish }
+    };
   }
 
   function extractPriceFromCell(row, className) {
@@ -149,14 +191,89 @@
     return price ? price[0] : null;
   }
 
+  function extractNumber(text) {
+    const match = String(text || "").match(/[\d,]+(?:\.\d+)?/);
+    return match ? Number(match[0].replace(/,/g, "")) : null;
+  }
+
+  function parseVolumeMap(html) {
+    const text = stripTags(html);
+    const matches = Array.from(text.matchAll(/volume:\s*([^]*?)(?=volume:|$)/gi))
+      .map((match) => cleanVolumeText(match[1]))
+      .filter(Boolean)
+      .slice(0, 6);
+    const [ungraded, grade7, grade8, grade9, grade95, psa10] = matches;
+    return { ungraded, grade7, grade8, grade9, grade95, psa10 };
+  }
+
+  function cleanVolumeText(value) {
+    const cleaned = String(value || "")
+      .replace(/\b(?:PSA\s*10\s*Pop|Total\s+Graded|POP\s+Report)\b[\s\S]*$/i, " ")
+      .replace(/\+\s*$/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const liquidityMatch = cleaned.match(/\b\d+\s+sales?\s+per\s+(?:day|week|month|year)\b/i) ||
+      cleaned.match(/\b1\s+sale\s+per\s+(?:day|week|month|year)\b/i) ||
+      cleaned.match(/\brare\b/i);
+    return liquidityMatch ? liquidityMatch[0] : cleaned;
+  }
+
+  function parseLiquidityLabel(volumeText) {
+    const text = String(volumeText || "").toLowerCase();
+    if (!text) return "";
+    if (text.includes("per day")) return "high";
+    if (text.includes("per week")) return "medium";
+    if (text.includes("per month") || text.includes("per year")) return "low";
+    if (text.includes("rare")) return "low";
+    return "unknown";
+  }
+
+  function parsePopulationStats(html) {
+    const text = stripTags(html);
+    const psa10PopMatch =
+      text.match(/PSA\s*10(?:\s*pop(?:ulation)?|\s*population)?[^0-9]{0,20}([\d,]+)/i) ||
+      text.match(/population(?:\s*report)?[^.]{0,120}?PSA\s*10[^0-9]{0,20}([\d,]+)/i);
+    const totalGradedMatch = text.match(/total\s+graded[^0-9]{0,20}([\d,]+)/i);
+    const psa10PctMatch =
+      text.match(/PSA\s*10\s*(?:percentage|percent(?:age)?|rate)[^0-9]{0,20}([\d,.]+\s*%?)/i) ||
+      text.match(/gem\s*rate[^0-9]{0,20}([\d,.]+\s*%?)/i);
+
+    const psa10Pop = psa10PopMatch ? extractNumber(psa10PopMatch[1]) : null;
+    const totalGraded = totalGradedMatch ? extractNumber(totalGradedMatch[1]) : null;
+    const psa10Percentage = psa10PctMatch
+      ? `${String(psa10PctMatch[1]).replace(/\s+/g, "").replace(/%?$/, "%")}`
+      : (psa10Pop != null && totalGraded ? `${(psa10Pop / totalGraded * 100).toFixed(1)}%` : null);
+
+    return { psa10Pop, totalGraded, psa10Percentage };
+  }
+
   function parseProductDetail(html) {
-    return {
+    const prices = {
       ungraded: extractDetailPrice(html, "used_price"),
       grade7: extractDetailPrice(html, "complete_price"),
       grade8: extractDetailPrice(html, "new_price"),
       grade9: extractDetailPrice(html, "graded_price"),
       grade95: extractDetailPrice(html, "box_only_price"),
       psa10: extractDetailPrice(html, "manual_only_price")
+    };
+    const volumes = parseVolumeMap(html);
+    const preferredVolume = [
+      volumes.psa10,
+      volumes.grade95,
+      volumes.grade9,
+      volumes.grade8,
+      volumes.grade7,
+      volumes.ungraded
+    ].find(Boolean) || "";
+    const population = parsePopulationStats(html);
+    return {
+      prices,
+      stats: {
+        volumeText: preferredVolume,
+        liquidityLabel: parseLiquidityLabel(preferredVolume),
+        volumes,
+        ...population
+      }
     };
   }
 
@@ -181,13 +298,13 @@
   function hasKnownSetPair(cardSet, productSet, sourceIsJapanese, language) {
     if (!cardSet || !productSet) return false;
     if (language === "english" && sourceIsJapanese) {
-      for (const [englishSet, japaneseSets] of Object.entries(KNOWN_SET_PAIRS)) {
-        if (japaneseSets.some((set) => cardSet.includes(set)) && productSet.includes(englishSet)) return true;
+      for (const [japaneseSet, englishSets] of Object.entries(setPairs.japaneseToEnglish)) {
+        if (cardSet.includes(japaneseSet) && englishSets.some((set) => productSet.includes(set))) return true;
       }
       return false;
     }
     if (language === "japanese" && !sourceIsJapanese) {
-      const pairedSets = KNOWN_SET_PAIRS[cardSet] || [];
+      const pairedSets = setPairs.englishToJapanese[cardSet] || [];
       return pairedSets.some((set) => productSet.includes(set));
     }
     return false;
@@ -242,11 +359,14 @@
   }
 
   return {
+    configureSetPairs,
+    getSetPairs,
     decodeHtml,
     normalizeName,
     normalizeSet,
     parseSearchResults,
     parseProductDetail,
+    parseLiquidityLabel,
     rankResults,
     scoreProduct,
     isEnglish,
